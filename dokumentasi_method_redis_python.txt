@@ -1,0 +1,176 @@
+================================================================================
+DOKUMENTASI METHOD PUSTAKA REDIS-PY (PYTHON) & PENJELASANNYA
+Studi Kasus: Penyimpanan Dokumen JSON (Key-Value)
+================================================================================
+
+1. KONEKSI KE SERVER REDIS
+--------------------------------------------------------------------------------
+Method: redis.Redis()
+
+Kode:
+    import json
+    import redis
+
+    r = redis.Redis(
+        host="localhost",
+        port=6379,
+        db=0,
+        decode_responses=True
+    )
+
+Penjelasan:
+- host & port        : Alamat dan port server Redis (default: localhost:6379).
+- db                 : Indeks database Redis yang digunakan (default: 0).
+- decode_responses   : Jika diset True, Redis otomatis mengembalikan tipe data 
+                       string (str) bukan bytes (b'...'), sehingga bisa langsung 
+                       diproses oleh json.loads().
+
+
+2. CREATE (MENAMBAH DATA BARU)
+--------------------------------------------------------------------------------
+A. Input 1 Data: r.set(key, value, nx=True)
+
+Kode:
+    def create_data(data: dict) -> bool:
+        redis_key = f"pendaftaran_nikah:{data['id_pendaftaran']}"
+        payload = json.dumps(data)
+        
+        berhasil = r.set(redis_key, payload, nx=True)
+        return bool(berhasil)
+
+Penjelasan:
+- json.dumps(data)   : Mengubah dictionary Python menjadi teks format JSON 
+                       karena Redis standar menyimpan nilai dalam bentuk string.
+- nx=True (Not Exists): Opsi keamanan agar Redis HANYA menyimpan data jika key 
+                       belum ada. Jika ID sudah terpakai, Redis menolak menyimpan 
+                       (mengembalikan None/False) agar data lama tidak tertimpa.
+
+B. Input Massal (Bulk Insert): r.pipeline()
+
+Kode:
+    pipe = r.pipeline()
+    for item in daftar_data:
+        redis_key = f"pendaftaran_nikah:{item['id_pendaftaran']}"
+        pipe.set(redis_key, json.dumps(item))
+    pipe.execute()
+
+Penjelasan:
+- r.pipeline()       : Mengumpulkan banyak perintah Redis di memori terlebih 
+                       dahulu, lalu mengirimkannya ke server dalam satu kali 
+                       jalan saat pipe.execute() dipanggil. Jauh lebih cepat 
+                       dibandingkan memanggil r.set() berulang kali di dalam loop.
+
+
+3. READ / SELECT (MEMBACA DATA)
+--------------------------------------------------------------------------------
+A. Select 1 Data Berdasarkan Key: r.get(key)
+
+Kode:
+    def get_by_id(id_pendaftaran: int) -> dict | None:
+        redis_key = f"pendaftaran_nikah:{id_pendaftaran}"
+        raw_data = r.get(redis_key)
+        
+        if raw_data:
+            return json.loads(raw_data)
+        return None
+
+Penjelasan:
+- r.get(key)         : Mengambil string JSON berdasarkan key spesifik. Jika key 
+                       tidak ditemukan di Redis, method ini mengembalikan None.
+- json.loads()       : Mengonversi kembali string JSON dari Redis menjadi 
+                       dictionary Python agar atributnya bisa diakses.
+
+B. Select All Data: r.scan_iter() + r.mget()
+
+Kode:
+    def get_all(pattern: str = "pendaftaran_nikah:*") -> list[dict]:
+        keys = list(r.scan_iter(match=pattern, count=100))
+        if not keys:
+            return []
+            
+        raw_values = r.mget(keys)
+        return [json.loads(val) for val in raw_values if val is not None]
+
+Penjelasan:
+- r.scan_iter()      : Menelusuri daftar key yang cocok dengan pola tertentu 
+                       secara bertahap (menggunakan cursor). Method ini aman 
+                       digunakan karena tidak memblokir server Redis (berbeda 
+                       dengan r.keys() yang bisa membuat server hang jika data besar).
+- match & count      : 'match' menentukan pola nama key (tanda * berarti bebas), 
+                       sedangkan 'count' mengatur jumlah key yang dipindai per batch.
+- r.mget(keys)       : (Multi-Get) Mengambil nilai dari banyak key sekaligus 
+                       dalam satu perintah jaringan, menghasilkan list berisi 
+                       string JSON.
+
+
+4. UPDATE (MEMPERBARUI DATA BERDASARKAN KEY)
+--------------------------------------------------------------------------------
+Method: r.get(key) -> Ubah Dictionary -> r.set(key, value, xx=True)
+
+Kode:
+    def update_by_id(id_pendaftaran: int, data_perubahan: dict) -> bool:
+        redis_key = f"pendaftaran_nikah:{id_pendaftaran}"
+        raw_data = r.get(redis_key)
+        
+        if not raw_data:
+            return False
+            
+        dokumen = json.loads(raw_data)
+        dokumen.update(data_perubahan)
+        
+        berhasil = r.set(redis_key, json.dumps(dokumen), xx=True)
+        return bool(berhasil)
+
+Penjelasan:
+- Pola Read-Modify-Write: Karena nilai disimpan sebagai string JSON utuh, update 
+                       dilakukan dengan cara membaca data lama, mengubah isi 
+                       dictionary di Python, lalu menyimpannya kembali.
+- dokumen.update()   : Method bawaan dictionary Python untuk menimpa nilai field 
+                       lama dengan nilai baru atau menambah field baru.
+- xx=True (Already Exists): Kebalikan dari nx=True. Parameter ini memastikan Redis 
+                       HANYA memperbarui data jika key tersebut memang sudah ada 
+                       sebelumnya (mencegah terciptanya data baru secara tidak sengaja).
+
+
+5. DELETE (MENGHAPUS DATA)
+--------------------------------------------------------------------------------
+Method: r.delete(*keys)
+
+Kode:
+    def delete_by_id(id_pendaftaran: int) -> bool:
+        redis_key = f"pendaftaran_nikah:{id_pendaftaran}"
+        jumlah_terhapus = r.delete(redis_key)
+        return jumlah_terhapus > 0
+
+    # Menghapus banyak key sekaligus:
+    # r.delete("pendaftaran_nikah:101", "pendaftaran_nikah:102")
+
+Penjelasan:
+- r.delete(key)      : Menghapus key beserta isinya secara permanen dari Redis.
+- Return Value (int) : Method ini selalu mengembalikan angka bulat (integer) 
+                       yang menunjukkan jumlah key yang berhasil dihapus:
+                       * Bernilai 1 (atau lebih) jika key ditemukan dan dihapus.
+                       * Bernilai 0 jika key memang tidak ada di Redis.
+- jumlah_terhapus > 0: Mengubah hasil angka tadi menjadi nilai boolean (True jika 
+                       terhapus, False jika gagal/tidak ditemukan).
+
+
+6. METHOD PENDUKUNG LAINNYA (UTILITAS)
+--------------------------------------------------------------------------------
+- r.exists(key)
+  Mengecek apakah suatu key tersedia di Redis. Mengembalikan 1 jika ada, 0 jika tidak.
+  Contoh: if r.exists("pendaftaran_nikah:90"): ...
+
+- r.expire(key, detik)
+  Memberikan batas waktu kedaluwarsa (TTL / Time-To-Live) pada sebuah key. Setelah 
+  waktu habis, Redis akan menghapus key tersebut secara otomatis.
+  Contoh: r.expire("pendaftaran_nikah:90", 3600)  # Otomatis terhapus dalam 1 jam
+
+- r.ttl(key)
+  Mengecek sisa waktu hidup (dalam detik) dari key yang diberi expire(). 
+  Mengembalikan -1 jika key bersifat permanen, atau -2 jika key sudah tidak ada.
+
+- dict.pop("nama_field", None)
+  (Method Python untuk pembersihan JSON) Menghapus atribut tertentu dari dictionary 
+  sebelum disimpan kembali ke Redis tanpa memicu error jika atribut tidak ada.
+================================================================================
