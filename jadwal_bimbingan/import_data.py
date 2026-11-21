@@ -15,7 +15,7 @@ with open(file_jadwal, "r", encoding="utf-8") as f:
     data_jadwal = json.load(f)
 
 # 4. Pilih hanya 4 atribut yang dibutuhkan (proyeksi atribut)
-atribut_tabel = ["id_jadwal_bimbingan", "tanggal_bimbingan", "waktu_bimbingan", "ruangan", "nip_penyuluh"]
+atribut_tabel = ["id_jadwal_bimbingan", "tanggal_bimbingan", "waktu_bimbingan", "ruangan", "status_bimbingan", "nip_penyuluh"]
 
 pipe = r.pipeline()
 jumlah_disimpan = 0
