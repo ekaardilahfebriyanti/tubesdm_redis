@@ -11,7 +11,11 @@ if extra_keys:
     r.delete(*extra_keys)
 
 def select_5_pengantin() -> list[dict]:
-    keys = sorted(r.scan_iter(match="pendaftaran_nikah:*", count=200))
+    keys = sorted(
+        k
+        for k in r.scan_iter(match="pendaftaran_nikah:*", count=200)
+        if k != "pendaftaran_nikah:sort_akad" and k.count(":") == 1
+    )
     if not keys:
         return []
     rows = [json.loads(raw) for raw in r.mget(keys) if raw]
@@ -22,7 +26,6 @@ def select_5_pengantin() -> list[dict]:
         reverse=True,
     )
     return rows
-
 
 def run_stress_test(fn, repeats=(1, 5, 10)) -> None:
     for n in repeats:
