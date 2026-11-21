@@ -2,22 +2,33 @@ import json
 import redis
 
 r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
 pipe = r.pipeline()
+jumlah_diupdate = 0
 
-# scan_iter mencari dan menelusuri daftar key di Redis berdasarkan pola tertentu
-
-for redis_key in r.scan_iter("pendaftaran_nikah:*"):
-    raw_data = r.get(redis_key)
+for key in r.scan_iter(match="pendaftaran_nikah:*"):
+    raw_data = r.get(key)
     if not raw_data:
         continue
 
     dokumen = json.loads(raw_data)
 
-    # Hapus nik_suami dan nik_istri dari level induk
-    dokumen.pop("nik_suami", None)
-    dokumen.pop("nik_istri", None)
+    # Hapus key 'nik' di dalam objek suami & istri (aman jika bernilai None)
+    if isinstance(dokumen.get("suami"), dict):
+        dokumen["suami"].pop("nik", None)
 
-    pipe.set(redis_key, json.dumps(dokumen))
+    if isinstance(dokumen.get("istri"), dict):
+        dokumen["istri"].pop("nik", None)
 
-pipe.execute()
-print("Semua data pendaftaran_nikah berhasil dibersihkan.")
+    pipe.set(key, json.dumps(dokumen), xx=True)
+    jumlah_diupdate += 1
+
+if jumlah_diupdate > 0:
+    pipe.execute()
+
+print(f"Berhasil memperbarui {jumlah_diupdate} data di Redis.")
+
+# Cek hasil akhir pada ID 90
+hasil = r.get("pendaftaran_nikah:90")
+if hasil:
+    print(json.dumps(json.loads(hasil), indent=2))
