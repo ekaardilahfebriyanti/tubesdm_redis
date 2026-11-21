@@ -10,21 +10,19 @@ file_penduduk = DATA_DIR / "penduduk.json"
 
 r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
-ATRIBUT_EMBED = ["nik", "nama_depan", "nama_belakang", "tanggal_lahir", "jenis_kelamin"]
+ATRIBUT_EMBED = ["nama_depan", "nama_belakang", "tanggal_lahir", "jenis_kelamin"]
 
 FALLBACK_PENDUDUK = {
     "3273076501790216": {
-        "nik": "3273076501790216",
-        "nama_depan": "Budi",
-        "nama_belakang": "Santoso",
-        "tanggal_lahir": "1981-06-07",
+        "nama_depan": "Byrle",
+        "nama_belakang": "Driuzzi",
+        "tanggal_lahir": "1971-04-29",
         "jenis_kelamin": "L",
     },
     "3273076501790217": {
-        "nik": "3273076501790217",
-        "nama_depan": "Indah",
-        "nama_belakang": "Kumalasari",
-        "tanggal_lahir": "1985-03-01",
+        "nama_depan": "Kristo",
+        "nama_belakang": "Ciubutaro",
+        "tanggal_lahir": "1983-09-27",
         "jenis_kelamin": "P",
     },
 }
@@ -39,7 +37,6 @@ def load_penduduk_index() -> dict[str, dict]:
             nik = str(p.get("nik") or p.get("NIK") or "").strip()
             if nik:
                 doc = {k: p.get(k) for k in ATRIBUT_EMBED}
-                doc["nik"] = nik
                 index[nik] = doc
     return index
 
@@ -78,6 +75,7 @@ def build_dokumen_101(penduduk_by_nik: dict[str, dict]) -> dict:
         "istri": penduduk_by_nik.get(nik_istri),
     }
 
+
 def insert_2_pendaftaran_101(penduduk_by_nik: dict[str, dict] | None = None) -> tuple[bool, dict]:
     index_penduduk = penduduk_by_nik if penduduk_by_nik is not None else load_penduduk_index()
     dokumen = build_dokumen_101(index_penduduk)
@@ -111,16 +109,14 @@ if __name__ == "__main__":
     key = f"pendaftaran_nikah:{doc['id_pendaftaran']}"
     if inserted:
         print(f"Berhasil insert {key} dengan embedded suami & istri.")
-    else:
-        print(f"Key {key} sudah ada di Redis (dilewati karena nx=True).")
 
     tersimpan = r.get(key)
     if tersimpan:
         parsed = json.loads(tersimpan)
         print(
             f"Preview -> id={parsed.get('id_pendaftaran')} | "
-            f"nik_suami={parsed.get('nik_suami')} ({parsed.get('suami', {}).get('nama_depan')}) | "
-            f"nik_istri={parsed.get('nik_istri')} ({parsed.get('istri', {}).get('nama_depan')}) | "
+            f"suami={parsed.get('suami', {}).get('nama_depan')} {parsed.get('suami', {}).get('nama_belakang')} | "
+            f"istri={parsed.get('istri', {}).get('nama_depan')} {parsed.get('istri', {}).get('nama_belakang')} | "
             f"status={parsed.get('status_pendaftaran')}"
         )
 

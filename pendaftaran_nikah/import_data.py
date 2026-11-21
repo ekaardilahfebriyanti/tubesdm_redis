@@ -20,7 +20,7 @@ with open(file_pendaftaran, "r", encoding="utf-8") as f:
     data_pendaftaran = json.load(f)
 
 # 4. Membuat indeks penduduk berdasarkan NIK (5 atribut)
-atribut_embed = ["nik", "nama_depan", "nama_belakang", "tanggal_lahir", "jenis_kelamin"]
+atribut_embed = ["nama_depan", "nama_belakang", "tanggal_lahir", "jenis_kelamin"]
 penduduk_by_nik = {
     p["nik"]: {key: p[key] for key in atribut_embed}
     for p in data_penduduk
